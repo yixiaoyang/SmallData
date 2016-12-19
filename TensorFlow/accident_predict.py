@@ -10,6 +10,26 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import rnn, rnn_cell
 
+l_headers =["time",            # 0
+            "accident num",    # 1
+            "accident type",   # 2
+            "holiday",         # 3
+            "percipitation",   # 4
+            "visibility",      # 5
+            "wind",            # 6
+            "wind direction",  # 7
+            "fog",             # 8
+            "rain",            # 9
+            "sun rise",        # 10
+            "sun set",         # 11
+            "weekend",         # 12
+            "workday",         # 13
+            "t0",              # 14
+            "t1",              # 15
+            "t2",              # 16
+            "t3"]              # 17
+def data_header(cols):
+    return [l_headers[x] for x in cols]
 
 def convert_data(srcFile, dstFile, interal=2):
     if not os.path.exists(srcFile):
@@ -25,7 +45,8 @@ def convert_data(srcFile, dstFile, interal=2):
     dfp = open(dstFile, 'w')
     with open(srcFile, 'r') as fp:
         header = fp.readline()
-        header = header.replace("Time,", "")
+        # header = header.replace("Time,", "")
+        # header = header.replace("time,", "")
         header = header.replace("\r\n", "")
         header = header + ",weekend,workday,t0,t1,t2,t3\r\n"
         dfp.write(header)
@@ -60,7 +81,7 @@ def convert_data(srcFile, dstFile, interal=2):
 
             # convert ac_type
             values[2] = ac_types[values[2]]
-            line = ','.join(values[1:])
+            line = ','.join(values)
             line = line.replace("\r\n", "")
             newLine = line + "," + strWeek + "," + strTime + "\r\n"
             dfp.write(newLine)
@@ -154,12 +175,17 @@ class RecurrentNeuralNetwork:
                 input_x = train_x[idx:idx + batch_n]
                 output_y = train_y[idx]
                 feed_dict = {self.inputs: input_x, self.label_layer: output_y}
-                _, summary = self.session.run([self.trainer, merged_summary], feed_dict=feed_dict)
+
+                retry = 1
+                #retry = 2 if int(len(train_y[idx]) >= 2) else 1
+
+                for i in range(retry):
+                    _, summary = self.session.run([self.trainer, merged_summary], feed_dict=feed_dict)
 
                 writer.add_summary(summary, idx + epoch * total_seq)
 
-    def predict(self, test_x, test_y, batch_n):
-        residual = 0.2
+    def test(self, test_x, test_y, batch_n, headers, times, out_file="result.csv"):
+        residual = 0.5
         seq_n = len(test_x)
         input_n = len(test_x[0])
         statistics = AccStatistics()
@@ -167,63 +193,77 @@ class RecurrentNeuralNetwork:
         acc_predict_cnt, acc_cnt = 0, 0
         no_acc_predict_cnt, no_acc_cnt = 0, 0
 
-        for idx in range(batch_n, seq_n - batch_n - 1):
-            input_x = test_x[idx:idx + batch_n]
-            label_y = test_y[idx]
-            predict_y = self.session.run(self.prediction, feed_dict={self.inputs: input_x})
+        with open(out_file, 'w') as fout:
+            # [time/date, input vector, actual(accident), predicted(accident), result{0,1,2,3}]
+            header_str = ",".join(headers)
+            header_str = "time/date," + header_str
+            fout.write(header_str+"\r\n")
 
-            if int(label_y) == 0:
-                statistics.total_no_acc_tframes += 1
+            for idx in range(batch_n, seq_n - batch_n):
+                input_x = test_x[idx:idx + batch_n]
+                label_y = test_y[idx]
+                predict_y = self.session.run(self.prediction, feed_dict={self.inputs: input_x})
+                predict_y = predict_y[0]
 
-                if abs(label_y - predict_y) < residual:
-                    no_acc_predict_cnt += 1
-                    statistics.predict_no_acc_tframes += 1
-            else:
-                statistics.total_acc += int(label_y)
-                statistics.total_acc_tframes += 1
+                '''
+                Please use this format for the result file (as discussed)
+                [time/date, input vector, actual(accident), predicted(accident), result{0,1,2,3}]
 
-                if abs(label_y - predict_y) < residual:
-                    statistics.predict_acc_tframes += 1
-                    statistics.predict_acc += int(label_y + residual)
+                result legend-
+                0, not an accident - predicted
+                1, not an accident - not predicted
+                2, accident - predicted
+                3, accident - not predicted
+                '''
+                line = str(times[idx][0]) + ","
+                legend = "1"
+                for items in input_x:
+                    items_str = [str(item) for item in items]
+                    input_x_str = ",".join(items_str)
+                    line += input_x_str
+                    line += ","
+                line += str(label_y[0]) + ","
+                line += str(predict_y[0]) + ","
 
-        statistics.print_scores()
+                if int(label_y) == 0:
+                    statistics.total_no_acc_tframes += 1
 
-    def test(self, test_x, test_y, batch_n, epochs):
-        self.predict(test_x, test_y, batch_n=batch_n)
+                    if abs(label_y - predict_y) < residual:
+                        no_acc_predict_cnt += 1
+                        statistics.predict_no_acc_tframes += 1
+                        legend = "0"
+                    else:
+                        legend = "1"
+                else:
+                    statistics.total_acc += int(label_y)
+                    statistics.total_acc_tframes += 1
 
+                    if abs(label_y - predict_y) < residual:
+                        statistics.predict_acc_tframes += 1
+                        statistics.predict_acc += int(label_y + residual)
+                        legend = "2"
+                    else:
+                        legend = "3"
 
-'''
-    data_import
-        dtype =[
-                        #('time'                ,'<S32'),     #     time
-                        ('ac_num'               ,int),        # 0   ac_num
-                        ('ac_type'              ,int),        # 1   ac_type
-                        ('holiday'              ,int),        # 2   holiday
-                        ('prec'                 ,float),      # 3   prec
-                        ('visibility'           ,int),        # 4   visibility  (0-?)
-                        ('wind'                 ,float),      # 5   wind        (0-1x?)
-                        ('wind_dir'             ,int),        # 6   wind_dir    (0-360)
-                        ('fog'                  ,int),        # 7   fog
-                        ('rain'                 ,int),        # 8   rain
-                        ('sun_rise'             ,int),        # 9   sun_rise
-                        ('sun_set'              ,int),        # 10  sun_set
-                        ('weekend'              ,int),        # 11  weekend
-                        ('workday'              ,int),        # 12  workday
-                        ('t0'                   ,int),        # 13  t0
-                        ('t1'                   ,int),        # 14  t1
-                        ('t2'                   ,int),        # 15  t2
-                        ('t3'                   ,int),        # 16  t3
-        ]
-'''
+                line += str(legend) + "\r\n"
+                fout.write(line)
 
+                #if idx < 200:
+                #    print("%f %f"%(label_y, predict_y))
+                #else:
+                #    if label_y >= 1.0:
+                #        print("%f %f"%(label_y, predict_y))
+
+            statistics.print_scores()
+            fout.close()
 
 def normalize(x):
     return (x - min(x)) / (max(x) - min(x))
 
-
 def data_import(file, delimiter=',', cols=(), normalize_cols=()):
     x_cols = cols
-    y_cols = (0)
+    y_cols = (1)
+    t_cols = (0)
 
     x = np.genfromtxt(file, delimiter=delimiter, skip_header=True, usecols=x_cols)
 
@@ -232,16 +272,20 @@ def data_import(file, delimiter=',', cols=(), normalize_cols=()):
             x[:, idx] = normalize(x[:, idx])
 
     y = np.genfromtxt(file, delimiter=delimiter, skip_header=True, usecols=y_cols)
+
+    t = np.genfromtxt(file, delimiter=delimiter, skip_header=True, usecols=t_cols, dtype =[('time','<S32')])
+
     y = np.array([[value] for value in y])
-    return x, y
+    t = np.array([value for value in t])
+    return x, y, t
 
 
 if __name__ == "__main__":
+    print("--> prepare data")
     if not os.path.exists("./data/4hours2.csv"):
         convert_data("./data/4hours.csv", "./data/4hours2.csv")
     if not os.path.exists("./data/2hours2.csv"):
         convert_data("./data/2hours.csv", "./data/2hours2.csv")
-
     dataset = {
         "train_4hours": "./data/4hours-training.csv",
         "test_4hours": "./data/4hours-test.csv",
@@ -255,20 +299,33 @@ if __name__ == "__main__":
         "epochs": 4,
         "train_start": 0,
         "train_end": 4000,
-        "cols": (1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16),
-        "normalize_cols": (4, 5, 6),
+        "cols": (2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+        "normalize_cols": (5, 6, 7),
     }
 
-    data_4hours_x, data_4hours_y = data_import(dataset["4hours"],
+    headers = data_header(config["cols"])
+    headers.append("actual")
+    headers.append("predicted")
+    headers.append("result")
+
+    data_4hours_x, data_4hours_y, data_4hours_t = data_import(dataset["4hours"],
                                                cols=config["cols"], normalize_cols=config["normalize_cols"])
-    data_2hours_x, data_2hours_y = data_import(dataset["2hours"],
+    data_2hours_x, data_2hours_y, data_2hours_t = data_import(dataset["2hours"],
                                                cols=config["cols"], normalize_cols=config["normalize_cols"])
 
     train_x = data_4hours_x[config["train_start"] : config["train_end"]]
     train_y = data_4hours_y[config["train_start"] : config["train_end"]]
     test_x = data_2hours_x
     test_y = data_2hours_y
+    test_t = data_2hours_t
 
+    # train_x = data_4hours_x
+    # train_y = data_4hours_y
+    # test_x  = data_2hours_x
+    # test_y  = data_2hours_y
+    print("--> trainning")
     nn = RecurrentNeuralNetwork()
     nn.train(train_x, train_y, batch_n=config["batch_n"], epochs=config["epochs"])
-    nn.test(test_x, test_y, batch_n=config["batch_n"], epochs=config["epochs"])
+    print("--> testing")
+    nn.test(test_x, test_y, batch_n=config["batch_n"], headers=headers, times=test_t)
+    print("--> done")
