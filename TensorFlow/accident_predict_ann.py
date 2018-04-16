@@ -55,7 +55,7 @@ class RecurrentNeuralNetwork:
 
 
         initer = tf.global_variables_initializer()
-        writer = tf.train.SummaryWriter("./graph", self.session.graph)
+        writer = tf.train.SummaryWriter("./graph-ann", self.session.graph)
 
         tf.scalar_summary("loss", self.loss)
         #tf.scalar_summary("prediction", self.prediction[0][0])
@@ -81,7 +81,7 @@ class RecurrentNeuralNetwork:
         input_n = len(test_x[0])
 
         acc_predict_cnt, acc_cnt = 0,0
-        no_acc_predict_cnt = no_acc_cnt = 0,0
+        no_acc_predict_cnt, no_acc_cnt = 0,0
         for idx in range(seq_n):
             input_x = test_x[idx:idx + batch_n]
             label_y = test_y[idx]

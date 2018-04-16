@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plot
 
 class Config:
-    DATA_FILE="./regulate2.txt"
+    DATA_FILE="./regulate1.txt"
 
 
 def data_import(file,delimiter):
