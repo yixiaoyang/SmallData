@@ -184,8 +184,7 @@ class RecurrentNeuralNetwork:
 
                 writer.add_summary(summary, idx + epoch * total_seq)
 
-    def test(self, test_x, test_y, batch_n, headers, times, out_file="result.csv"):
-        residual = 0.5
+    def test(self, test_x, test_y, batch_n, headers, times, out_file="result.csv", acc_residual = 0.2, non_acc_residual = 0.02):
         seq_n = len(test_x)
         input_n = len(test_x[0])
         statistics = AccStatistics()
@@ -228,7 +227,7 @@ class RecurrentNeuralNetwork:
                 if int(label_y) == 0:
                     statistics.total_no_acc_tframes += 1
 
-                    if abs(label_y - predict_y) < residual:
+                    if abs(label_y - predict_y) < non_acc_residual:
                         no_acc_predict_cnt += 1
                         statistics.predict_no_acc_tframes += 1
                         legend = "0"
@@ -238,9 +237,9 @@ class RecurrentNeuralNetwork:
                     statistics.total_acc += int(label_y)
                     statistics.total_acc_tframes += 1
 
-                    if abs(label_y - predict_y) < residual:
+                    if abs(label_y - predict_y) < acc_residual:
                         statistics.predict_acc_tframes += 1
-                        statistics.predict_acc += int(label_y + residual)
+                        statistics.predict_acc += int(label_y + acc_residual)
                         legend = "2"
                     else:
                         legend = "3"
@@ -298,7 +297,7 @@ if __name__ == "__main__":
         "batch_n": 1,
         "epochs": 4,
         "train_start": 0,
-        "train_end": 4000,
+        "train_end": 8000,
         "cols": (2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
         "normalize_cols": (5, 6, 7),
     }
